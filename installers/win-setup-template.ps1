@@ -10,7 +10,12 @@ function Get-RegistryVersionFilter {
         [Parameter(Mandatory)][Int32] $MinorVersion
     )
 
-    $archFilter = if ($Architecture -eq 'x86') { "32-bit" } else { "64-bit" }
+    # ARM64 Python installer registers as "(ARM64)" in the display name, not "(64-bit)"
+    $archFilter = switch ($Architecture) {
+        'x86'   { "32-bit" }
+        'arm64' { "64-bit|ARM64" }
+        default { "64-bit" }
+    }    
     "Python $MajorVersion.$MinorVersion.*($archFilter)"
 }
 
@@ -138,7 +143,14 @@ New-Item -Path "$PythonArchPath\python3.exe" -ItemType SymbolicLink -Value "$Pyt
 Write-Host "Install and upgrade Pip"
 $Env:PIP_ROOT_USER_ACTION = "ignore"
 $PythonExePath = Join-Path -Path $PythonArchPath -ChildPath "python.exe"
-cmd.exe /c "$PythonExePath -m ensurepip && $PythonExePath -m pip install --upgrade --force-reinstall pip --no-warn-script-location"
+cmd.exe /c "$PythonExePath -c ""import pip"" 2>NUL"
+if ($LASTEXITCODE -ne 0) {
+    cmd.exe /c "$PythonExePath -m ensurepip"
+    if ($LASTEXITCODE -ne 0) {
+        Throw "Error happened during ensurepip execution"
+    }
+}
+cmd.exe /c "$PythonExePath -m pip install --upgrade --force-reinstall pip --no-warn-script-location"
 if ($LASTEXITCODE -ne 0) {
     Throw "Error happened during pip installation / upgrade"
 }
